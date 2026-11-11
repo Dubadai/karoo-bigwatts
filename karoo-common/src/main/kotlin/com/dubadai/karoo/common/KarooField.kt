@@ -28,24 +28,40 @@ object KarooField {
         KarooType.headerCapsTop(tileH, fullWidth) + KarooType.headerCapsPx(tileH) + BAND_SLACK_PX +
             (if (lines > 1) 15 else 0)
 
-    /**
-     * RemoteViews for [field]: its top [headerPx] rows at true height, the rest stretched to fill.
-     * [description]: what the field says, for TalkBack.
-     */
     /** How the body fills the room left: keep proportions, centred ([CENTER]) or at the bottom right ([END]), or [STRETCH]. */
     enum class Body { CENTER, END, STRETCH }
 
-    fun views(context: Context, field: Bitmap, headerPx: Int, description: String? = null, body: Body = Body.CENTER): RemoteViews {
+    /**
+     * RemoteViews for [field]: its top [headerPx] rows and its bottom [footerPx] rows at true
+     * height (e.g. a small value line under the number), the part between in the room left as [body]
+     * says. [description]: what the field says, for TalkBack.
+     */
+    fun views(
+        context: Context,
+        field: Bitmap,
+        headerPx: Int,
+        description: String? = null,
+        body: Body = Body.CENTER,
+        footerPx: Int = 0,
+    ): RemoteViews {
         val h = field.height
-        val band = headerPx.coerceIn(1, h - 1)
+        val band = headerPx.coerceIn(1, h - 2)
+        val foot = footerPx.coerceIn(0, h - band - 1)
         val headerPic = Bitmap.createBitmap(field, 0, 0, field.width, band)
-        val bodyPic = Bitmap.createBitmap(field, 0, band, field.width, h - band)
+        val bodyPic = Bitmap.createBitmap(field, 0, band, field.width, h - band - foot)
         val layout = when (body) { Body.CENTER -> R.layout.kit_field_split_center; Body.END -> R.layout.kit_field_split_end; Body.STRETCH -> R.layout.kit_field_split }
         return RemoteViews(context.packageName, layout).apply {
             setImageViewBitmap(R.id.kit_field_header, headerPic)
             setImageViewBitmap(R.id.kit_field_body, bodyPic)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 setViewLayoutHeight(R.id.kit_field_header, band.toFloat(), TypedValue.COMPLEX_UNIT_PX)
+            }
+            if (foot > 0) {
+                setImageViewBitmap(R.id.kit_field_footer, Bitmap.createBitmap(field, 0, h - foot, field.width, foot))
+                setViewVisibility(R.id.kit_field_footer, android.view.View.VISIBLE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setViewLayoutHeight(R.id.kit_field_footer, foot.toFloat(), TypedValue.COMPLEX_UNIT_PX)
+                }
             }
             if (description != null) setContentDescription(R.id.kit_field_body, description)
         }

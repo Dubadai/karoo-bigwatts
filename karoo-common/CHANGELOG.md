@@ -1,5 +1,28 @@
 # karoo-common changelog
 
+## 1.5.0 (2026-11-11)
+
+Nothing changes for apps that don't use it (no visual change, no release needed).
+
+- `FieldPacer`: a field's redraw loop sleeps until its state or the page on screen changes (or the
+  next redraw is due) instead of waking every 40–100 ms to look. Same redraw timing; other inputs
+  (settings, night mode) are seen within a second. Unit tests in `src/test`.
+- `streamDataFlow`, `consumerFlow`, `StreamState.field` / `single` (KarooFlows.kt): the flow helpers
+  every app had its own copy of. An app that keeps its copy keeps using it.
+
+## 1.4.0 (2026-11-10)
+
+Added for UpAhead; nothing changes for apps that don't use it.
+
+- `settingsChoiceList`: one choice from a list too long for a segmented control (a row per option, a
+  ring at the right, the picked one on a grey card).
+
+## 1.3.0 (2026-11-10)
+
+- `KarooField.views(…, footerPx = n)`: a bottom band kept at true size too (top fixed, middle in the
+  room left, bottom fixed), for a value line under the number (Mountaineer's "+ 0:18 VS PR", grade
+  boxes). Without `footerPx` nothing changes.
+
 ## 1.2.0 (2026-11-10)
 
 - `KarooField.views(context, bitmap, headerPx)` + `KarooField.headerBandPx(tileH)`: a field drawn as

@@ -15,7 +15,6 @@ import io.hammerhead.karooext.models.UpdateGraphicConfig
 import io.hammerhead.karooext.models.ViewConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
@@ -59,7 +58,12 @@ class BigWattsDataType(
             var lastRender = 0L
             var shown: Key? = null
             var wasOnScreen = true
+            // Sleep until the data or the page on screen changes (karoo-common FieldPacer), no polling
+            val pace = FieldPacer(listOf(session.state, session.activePage))
+            val pagePace = FieldPacer(listOf(session.activePage))
             while (isActive) {
+                pace.mark()
+                pagePace.mark()
                 // With BigWatts on two ride pages the Karoo can show one page's picture in the
                 // other's tile, so only the view on the page on screen draws (as in ClearWind).
                 val onScreen = config.preview || onScreen(config)
@@ -68,7 +72,7 @@ class BigWattsDataType(
                     wasOnScreen = onScreen
                     if (onScreen) shown = null
                 }
-                if (!onScreen) { delay(POLL_MS); continue }
+                if (!onScreen) { pagePace.sleep(FieldPacer.CAP_MS); continue }
                 val s = session.state.value
                 val prefs = Settings.read(context)
                 val night = isNight(context)
@@ -92,7 +96,10 @@ class BigWattsDataType(
                     // Page-editing previews can keep running: one picture is enough
                     if (config.preview && shown != null) break
                 }
-                delay(POLL_MS)
+                // Watts wait for the short gap, the rest for SIDE_GAP_MS (as above)
+                val waiting = key != shown
+                val gap = if (waiting && wattsChanged) MIN_GAP_MS else SIDE_GAP_MS
+                pace.sleep(FieldPacer.nextMs(waiting, SystemClock.elapsedRealtime() - lastRender, gap, IDLE_REDRAW_MS))
             }
         }
         emitter.setCancellable { job.cancel() }
@@ -129,6 +136,5 @@ class BigWattsDataType(
         private const val MIN_GAP_MS = 920L
         private const val SIDE_GAP_MS = 2_500L
         private const val IDLE_REDRAW_MS = 5_000L
-        private const val POLL_MS = 40L
     }
 }
