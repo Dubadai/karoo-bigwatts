@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DDB BigWatts</string>
+    <string name="app_short_name">BigWatts</string>
+    <string name="extension_name">DDB BigWatts</string>
+    <string name="field_name">BigWatts</string>
+    <string name="field_description">Power, big, coloured by your Karoo power zones.</string>
+    <string name="no_sensor">No Sensor</string>
+    <string name="example_description">Example of BigWatts at half a page with these settings: 280 watts, zone 4.</string>
+
+    <string name="setting_look">Look</string>
+    <string name="look_bigwatts">BigWatts</string>
+    <string name="look_karoo">Karoo</string>
+    <string name="setting_look_help">Karoo: numbers in the Karoo\'s own font.</string>
+
+    <string name="setting_number">Number</string>
+    <string name="number_neutral">Neutral</string>
+    <string name="number_zone">Zone colour</string>
+    <string name="number_gauge">Gauge</string>
+    <string name="setting_number_help">Colours follow your Karoo power zones.</string>
+
+    <string name="setting_gauge">Gauge</string>
+    <string name="gauge_arc">Arc</string>
+    <string name="gauge_bar">Bar</string>
+    <string name="setting_gauge_help">One row always uses the bar.</string>
+
+    <string name="setting_zone_time">Zone time</string>
+    <string name="zone_time_off">Off</string>
+    <string name="zone_time_pedalling">Pedalling</string>
+    <string name="zone_time_all">All time</string>
+    <string name="setting_zone_time_help">Each zone grows with the time you spend in it this ride. All time counts coasting (0 W) as zone 1; Pedalling leaves it out.</string>
+
+    <string name="setting_under">Under the watts</string>
+    <string name="under_zone">Zone</string>
+    <string name="under_hr">Heart rate</string>
+    <string name="under_avg">Avg watts</string>
+    <string name="setting_under_help">Left out when the field is one row tall. Average is for the whole ride.</string>
+
+    <string name="setting_zone_name">Zone name</string>
+    <string name="zone_name_short">Short</string>
+    <string name="zone_name_compact">Compact</string>
+    <string name="zone_name_long">Long</string>
+    <string name="setting_zone_name_help">Short: Z4. Compact: Zone 4. Long: Zone 4 · Tempo.</string>
+
+    <string name="setting_power">Power</string>
+    <string name="power_instant">Instant</string>
+    <string name="power_3s">3 s</string>
+    <string name="power_5s">5 s</string>
+    <string name="power_10s">10 s</string>
+    <string name="setting_power_help">Instant reacts fastest; 10 s is calmest.</string>
+
+    <string name="settings_size_hint">Best two rows tall or more. You set the size when you add BigWatts to a ride page.</string>
+
+    <!-- Field name in the Karoo look's header, like the Karoo's own power fields -->
+    <string name="label_power">POWER</string>
+    <string name="label_power_3s">3S POWER</string>
+    <string name="label_power_5s">5S POWER</string>
+    <string name="label_power_10s">10S POWER</string>
+
+    <!-- The Karoo's own zone names (ride app, commonmodule_auto_zone_1…7) -->
+    <string name="zone_1">Active Recovery</string>
+    <string name="zone_2">Endurance</string>
+    <string name="zone_3">Tempo</string>
+    <string name="zone_4">Lactate Threshold</string>
+    <string name="zone_5">VO2 Max</string>
+    <string name="zone_6">Anaerobic Capacity</string>
+    <string name="zone_7">Neuromuscular</string>
+    <string name="zone_compact">Zone %1$d</string>
+    <string name="zone_compact_caps">ZONE %1$d</string>
+    <string name="avg_line">Avg %1$s W</string>
+    <string name="avg_line_caps">AVG %1$s W</string>
+
+    <!-- Settings kit (SettingsKit.kt) -->
+    <string name="setting_press">Press button</string>
+    <string name="setting_press_help">The field\'s example button. Remote buttons work either way.</string>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep id and typeId once released: ride pages refer to the field by them. -->
+<ExtensionInfo
+    displayName="@string/extension_name"
+    icon="@drawable/ic_app"
+    id="bigwatts"
+    scansDevices="false">
+
+    <DataType
+        description="@string/field_description"
+        displayName="@string/field_name"
+        graphical="true"
+        icon="@drawable/ic_app"
+        typeId="big-watts" />
+</ExtensionInfo>

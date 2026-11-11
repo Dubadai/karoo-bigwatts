@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Big Watts scope</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; }
+  body { background:#2A2A2A; color:#C9C6C0; font:14px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif;
+         padding:32px 16px 64px; box-sizing:border-box; }
+  h1 { font-size:22px; color:#F2F0EA; margin:0 0 4px; text-align:center; }
+  h2 { font-size:17px; color:#F2F0EA; margin:0; }
+  p.lead { max-width:760px; margin:0 auto 32px; text-align:center; }
+  section { max-width:1200px; margin:0 auto 56px; display:grid; gap:14px; justify-items:center; }
+  section > p { max-width:760px; margin:0; text-align:center; }
+  .row { display:flex; flex-wrap:wrap; justify-content:center; align-items:flex-start; gap:22px; }
+  figure { margin:0; display:grid; justify-items:center; gap:8px; }
+  figcaption { font-size:13px; color:#E8E6E1; text-align:center; max-width:220px; }
+  canvas.dev { cursor:pointer; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+  button { font:inherit; background:#3A3A38; color:#F2F0EA; border:1px solid #555; border-radius:16px; padding:5px 14px; cursor:pointer; }
+  button.on { background:#E8E6E1; color:#111; }
+  .tiles { display:grid; gap:12px; justify-items:center; }
+  .tiles canvas { border-radius:4px; }
+  .zones { display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
+  .zones span { padding:2px 8px; border-radius:8px; font-size:12px; color:#111; }
+</style>
+</head>
+<body>
+<h1>Big Watts: scope</h1>
+<p class="lead">Interval Screen's big-watts styles as their own app. Colours follow the Karoo's power zones
+(rider profile → FTP / power zones), so no target, no workouts, no intervals.icu.</p>
+
+<section>
+  <h2>1 · What Interval Screen has today</h2>
+  <p>Tap the watts to cycle through five styles. Styles 2–5 colour against a target range from an intervals.icu
+  workout. Without a workout you get the free-ride screen (plain watts, Lap avg, HR zone tile, laps).</p>
+  <div class="row" id="today"></div>
+</section>
+
+<section>
+  <h2>2 · Big Watts: one data field, the watts big in the middle</h2>
+  <p>3 s power, as big as the field allows, with its Karoo zone above it. Tap the watts to cycle the five
+  styles (remembered). Colours are the zone the watts are in. Put it on a page alone or next to Karoo's own fields.</p>
+  <div class="zones" id="legend"></div>
+  <div class="controls" id="controls"></div>
+  <div class="row" id="styles"></div>
+  <div class="row" id="layouts"></div>
+</section>
+
+
+<script>/*__KAROO_DEVICE_JS__*/</script>
+<script>
+const FRAME = "__FRAME__";
+const REFS = "__REFS__";
+const UI = '"IBM Plex Sans"';
+
+/* Karoo power zones (7, % of FTP). Demo FTP 280 W. */
+const FTP = 280;
+const ZONE_TOP = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, Infinity];
+const ZONE_NAME = ['Recovery', 'Endurance', 'Tempo', 'Threshold', 'VO2 max', 'Anaerobic', 'Neuromuscular'];
+const ZC = {   // per zone: gauge arc, number (light, dark), background tint (light, dark)
+  arc:     ['#9A9890','#3B82D6','#5E9E2A','#E2B007','#EF8A2F','#E24B4A','#8E5BD9'],
+  textL:   ['#5F5E5A','#0C447C','#27500A','#6B4B00','#8A3B00','#791F1F','#4B2A85'],
+  textD:   ['#C9C7BF','#85B7EB','#97C459','#F2CF5B','#F5A86A','#F09595','#C3A6F2'],
+  bgL:     ['#DDDCD6','#9FC7EF','#B4CE95','#F3DE8A','#F6C49B','#F1A9A8','#CDB9F0'],
+  bgD:     ['#2C2C2A','#153454','#263A0D','#3E3206','#4A2608','#561C1C','#2E1C52'],
+};
+const zoneOf = w => ZONE_TOP.findIndex(t => w < t * FTP);
+const PAL = {
+  light: { bg:'#FFFFFF', tile:'#F1EFE8', tonal:'rgba(0,0,0,0.08)', text:'#0B0B0B', sub:'#444441', track:'#E4E2DA', lap:'#7F77DD', heart:'#C62F3A' },
+  dark:  { bg:'#0B0B0B', tile:'#2C2C2A', tonal:'rgba(255,255,255,0.12)', text:'#FFFFFF', sub:'#D3D1C7', track:'#3A3A38', lap:'#AFA9EC', heart:'#FF5C66' },
+};
+const STYLES = ['Plain', 'Coloured number', 'Coloured background', 'Both', 'Gauge'];
+
+function gear(ctx, x, y, r, color) {
+  ctx.save(); ctx.translate(x, y); ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) { ctx.save(); ctx.rotate(i * Math.PI / 4); ctx.rect(-r * 0.2, -r * 1.05, r * 0.4, r * 0.4); ctx.restore(); }
+  ctx.fill();
+  ctx.beginPath(); ctx.arc(0, 0, r * 0.78, 0, 7); ctx.arc(0, 0, r * 0.36, 0, 7, true); ctx.fill('evenodd');
+  ctx.restore();
+}
+function heart(ctx, x, y, s, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s / 24, s / 24); ctx.fillStyle = color;
+  ctx.fill(new Path2D('M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.2 0 3.6 1.2 5.3 3 1.7-1.8 3.1-3 5.3-3 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z'));
+  ctx.restore();
+}
+function lapIcon(ctx, x, y, s, color) {
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = s * 0.14; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, s * 0.36, -Math.PI * 0.35, Math.PI * 1.45); ctx.stroke();
+  ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(x + s * 0.62, y + s * 0.02); ctx.lineTo(x + s * 0.92, y + s * 0.2); ctx.lineTo(x + s * 0.6, y + s * 0.36); ctx.fill();
+  ctx.restore();
+}
+function fitFont(ctx, text, weight, maxW, maxPx) {
+  let px = maxPx; ctx.font = `${weight} ${px}px ${UI}`;
+  while (ctx.measureText(text).width > maxW && px > 10) { px -= 2; ctx.font = `${weight} ${px}px ${UI}`; }
+  return px;
+}
+
+/** The tint behind the watts: zone colour at the top, fading out at [fadeEnd]. */
+function tint(ctx, w, fadeEnd, color, bg) {
+  const g = ctx.createLinearGradient(0, 0, 0, fadeEnd);
+  g.addColorStop(0, color); g.addColorStop(0.75, color); g.addColorStop(1, bg);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, fadeEnd);
+}
+
+/** Zone gauge: arc 0 … 150 % FTP in the seven zone colours, needle at the watts. */
+function gauge(ctx, cx, cy, r, watts, p, mode) {
+  const a0 = Math.PI * 0.8, a1 = Math.PI * 2.2, max = FTP * 1.6;
+  const ang = v => a0 + (a1 - a0) * Math.min(Math.max(v / max, 0), 1);
+  ctx.lineWidth = r * 0.13; ctx.lineCap = 'butt';
+  let from = 0;
+  ZONE_TOP.forEach((t, i) => {
+    const to = Math.min(t * FTP, max);
+    ctx.strokeStyle = ZC.arc[i]; ctx.globalAlpha = i === zoneOf(watts) ? 1 : (mode === 'dark' ? 0.4 : 0.35);
+    ctx.beginPath(); ctx.arc(cx, cy, r, ang(from) + 0.012, ang(to) - 0.012); ctx.stroke();
+    from = to;
+  });
+  ctx.globalAlpha = 1;
+  const a = ang(watts);
+  ctx.strokeStyle = p.text; ctx.lineWidth = 7; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r * 0.86, cy + Math.sin(a) * r * 0.86);
+  ctx.lineTo(cx + Math.cos(a) * r * 1.14, cy + Math.sin(a) * r * 1.14); ctx.stroke();
+}
+
+/** A: full page, free-ride layout. B: watts only. Draws over the screen below the status bar. */
+function drawPage(ctx, { mode, style, watts, layout }) {
+  const p = PAL[mode], z = zoneOf(watts), dark = mode === 'dark';
+  const top = 60, W = 480, H = 800;
+  ctx.fillStyle = p.bg; ctx.fillRect(0, top, W, H - top); ctx.fillRect(0, 0, 200, top);
+  const bgOn = style === 2 || style === 3, numOn = style === 1 || style === 3, gaugeOn = style === 4;
+  const fadeEnd = layout === 'A' ? 470 : H;
+  if (bgOn) { ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, H - top); ctx.clip(); tint(ctx, W, fadeEnd, dark ? ZC.bgD[z] : ZC.bgL[z], p.bg); ctx.restore(); }
+  const numCol = numOn ? (dark ? ZC.textD[z] : ZC.textL[z]) : p.text;
+  const tileBg = bgOn ? p.tonal : p.tile;
+
+  // Top row: gear (A) and the zone
+  if (layout === 'A') gear(ctx, 32, 97, 17, p.sub);
+  ctx.textAlign = 'center'; ctx.fillStyle = p.sub; ctx.font = `500 26px ${UI}`;
+  ctx.fillText(`Z${z + 1} · ${ZONE_NAME[z]}`, W / 2, 107);
+
+  const s = String(watts);
+  if (layout === 'A') {
+    if (gaugeOn) {
+      gauge(ctx, 240, 330, 170, watts, p, mode);
+      ctx.fillStyle = p.text; fitFont(ctx, s, 600, 270, 170); ctx.fillText(s, 240, 375);
+    } else {
+      ctx.fillStyle = numCol; fitFont(ctx, s, 600, 440, 250); ctx.fillText(s, 240, 375);
+    }
+    // Lap time row
+    lapIcon(ctx, 18, 452, 22, p.lap);
+    ctx.textAlign = 'left'; ctx.fillStyle = p.text; ctx.font = `500 26px ${UI}`; ctx.fillText('Lap time', 50, 474);
+    ctx.textAlign = 'right'; ctx.font = `600 40px ${UI}`; ctx.fillText('5:31', 462, 482);
+    // Tiles
+    const tile = (x, label, value, icon) => {
+      ctx.fillStyle = tileBg; ctx.beginPath(); ctx.roundRect(x, 512, 218, 132, 14); ctx.fill();
+      icon(x);
+      ctx.textAlign = 'left'; ctx.fillStyle = p.sub; ctx.font = `500 24px ${UI}`; ctx.fillText(label, x + 50, 548);
+      ctx.fillStyle = p.text; ctx.font = `600 56px ${UI}`; ctx.fillText(value, x + 16, 620);
+    };
+    tile(16, 'Lap avg', '305', x => lapIcon(ctx, x + 16, 529, 24, p.lap));
+    tile(246, 'HR', '143', x => heart(ctx, x + 16, 529, 26, p.heart));
+    ctx.textAlign = 'center'; ctx.fillStyle = p.sub; ctx.font = `500 22px ${UI}`; ctx.fillText('Last lap', 240, 700);
+    ctx.fillStyle = p.text; ctx.font = `600 28px ${UI}`; ctx.fillText('8:20 · 271 W · 142 bpm', 240, 742);
+  } else {
+    if (gaugeOn) {
+      gauge(ctx, 240, 470, 205, watts, p, mode);
+      ctx.fillStyle = p.text; fitFont(ctx, s, 600, 320, 200); ctx.fillText(s, 240, 530);
+    } else {
+      ctx.fillStyle = numCol; fitFont(ctx, s, 600, 450, 300); ctx.fillText(s, 240, 520);
+    }
+  }
+}
+
+/** B as a smaller field (field-only tile, w×h px on the Karoo). */
+function drawField(ctx, w, h, { mode, style, watts }) {
+  const p = PAL[mode], z = zoneOf(watts), dark = mode === 'dark';
+  ctx.fillStyle = p.bg; ctx.fillRect(0, 0, w, h);
+  const bgOn = style === 2 || style === 3, numOn = style === 1 || style === 3;
+  if (bgOn) { ctx.fillStyle = dark ? ZC.bgD[z] : ZC.bgL[z]; ctx.fillRect(0, 0, w, h); }
+  ctx.textAlign = 'center'; ctx.fillStyle = p.sub; ctx.font = `500 ${Math.round(h * 0.11)}px ${UI}`;
+  ctx.fillText(`Z${z + 1}`, w / 2, h * 0.17);
+  const s = String(watts);
+  if (style === 4) {
+    const r = Math.min(w * 0.4, h * 0.42);
+    gauge(ctx, w / 2, h * 0.6, r, watts, p, mode);
+    ctx.fillStyle = p.text; fitFont(ctx, s, 600, r * 1.5, r * 0.95); ctx.fillText(s, w / 2, h * 0.6 + r * 0.32);
+  } else {
+    ctx.fillStyle = numOn ? (dark ? ZC.textD[z] : ZC.textL[z]) : p.text;
+    const px = fitFont(ctx, s, 600, w * 0.92, h * 0.78); ctx.fillText(s, w / 2, h * 0.55 + px * 0.36);
+  }
+}
+
+const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; });
+
+(async () => {
+  await Promise.all([document.fonts.load(`600 100px ${UI}`), document.fonts.load(`500 20px ${UI}`)]);
+
+  // 1 · Today: real device screenshots
+  const today = document.getElementById('today');
+  const shots = [
+    ['10-mode1-plain-light', '1 · Plain'], ['11-mode2-coloured-number-light', '2 · Coloured number (target range)'],
+    ['12-mode3-coloured-background-light', '3 · Coloured background'], ['13-mode4-both-light', '4 · Both'],
+    ['14-mode5-gauge-light', '5 · Gauge (target range arc)'], ['screen-free-ride-dark', 'Free ride (no workout), Karoo style'],
+  ];
+  for (const [k, cap] of shots) {
+    const dev = await KarooDevice.load({ frame: FRAME, screen: REFS[k] });
+    const f = document.createElement('figure'); f.append(dev.device(dev.screen({ scale: 2 }), 190));
+    const fc = document.createElement('figcaption'); fc.textContent = cap; f.append(fc); today.append(f);
+  }
+
+  const baseDev = await KarooDevice.load({ frame: FRAME, screen: REFS['screen-free-ride-light'] });
+  const baseDark = await KarooDevice.load({ frame: FRAME, screen: REFS['screen-free-ride-dark'] });
+  const devFor = mode => mode === 'dark' ? baseDark : baseDev;
+
+  // Legend
+  const legend = document.getElementById('legend');
+  ZONE_NAME.forEach((n, i) => { const s = document.createElement('span'); s.style.background = ZC.bgL[i];
+    const lo = i ? Math.round(ZONE_TOP[i - 1] * FTP) : 0, hi = ZONE_TOP[i] === Infinity ? '' : Math.round(ZONE_TOP[i] * FTP) - 1;
+    s.textContent = `Z${i + 1} ${n} ${lo}${hi === '' ? '+' : '–' + hi} W`; legend.append(s); });
+
+  // 2 · Styles, with watts / mode controls
+  const st = { watts: 280, mode: 'light' };
+  const controls = document.getElementById('controls');
+  const btn = (label, on, fn) => { const b = document.createElement('button'); b.textContent = label; b.className = on() ? 'on' : '';
+    b.onclick = () => { fn(); renderAll(); }; b._on = on; controls.append(b); return b; };
+  const buttons = [];
+  for (const w of [130, 190, 235, 280, 315, 380, 520]) buttons.push(btn(`${w} W (Z${zoneOf(w) + 1})`, () => st.watts === w, () => st.watts = w));
+  for (const m of ['light', 'dark']) buttons.push(btn(m === 'light' ? 'Light' : 'Dark', () => st.mode === m, () => st.mode = m));
+
+  const stylesRow = document.getElementById('styles');
+  const layoutsRow = document.getElementById('layouts');
+  const layoutStyle = { A: 0, B: 0 };
+
+  function renderAll() {
+    buttons.forEach(b => b.className = b._on() ? 'on' : '');
+    stylesRow.replaceChildren();
+    STYLES.forEach((name, i) => {
+      const dev = devFor(st.mode);
+      const f = document.createElement('figure');
+      f.append(dev.device(dev.screen({ scale: 2, draw: ctx => drawPage(ctx, { mode: st.mode, style: i, watts: st.watts, layout: 'B' }) }), 210));
+      const fc = document.createElement('figcaption'); fc.textContent = `${i + 1} · ${name}`; f.append(fc); stylesRow.append(f);
+    });
+    layoutsRow.replaceChildren();
+    // Smaller fields
+    const tiles = document.createElement('figure'); const g = document.createElement('div'); g.className = 'tiles';
+    for (const [w, h, label] of [[478, 360, 'half page'], [238, 180, 'quarter page'], [238, 142, 'small field']]) {
+      const t = document.createElement('canvas'), dpr = window.devicePixelRatio || 1, k = 0.5;
+      t.width = w * dpr; t.height = h * dpr; t.style.width = `${w * k}px`; t.style.height = `${h * k}px`; t.title = label;
+      const tc = t.getContext('2d'); tc.scale(dpr, dpr);
+      drawField(tc, w, h, { mode: st.mode, style: layoutStyle.B, watts: st.watts });
+      t.style.cursor = 'pointer'; t.onclick = () => { layoutStyle.B = (layoutStyle.B + 1) % 5; renderAll(); };
+      g.append(t);
+    }
+    tiles.append(g); const fc = document.createElement('figcaption'); fc.textContent = 'Same field, smaller: half page, quarter, small (tap to cycle style)';
+    tiles.append(fc); layoutsRow.append(tiles);
+  }
+  // Styles row: tap a device cycles nothing (all five shown); layouts row taps cycle.
+  renderAll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+# One source for the README (top block) and the Reddit post: edit here, then run setup/docs.sh.
+# headline: "path | alt text", light first, then dark. Text in our plain voice; no real names.
+name: BigWatts
+apk: bigwatts.apk
+intro: |
+  A Hammerhead Karoo 3 data field that shows your power **big, in the middle**, coloured by the
+  power zones in your Karoo rider profile. Any field size: the number grows to fill it.
+headline:
+  - docs/images/bigwatts-light.gif | BigWatts on three Karoo 3s during a ride (full page, half page, a row): 3 s power builds from 196 W in zone 2 to 331 W in zone 5 and eases off, the zone gauge and zone name following
+  - docs/images/bigwatts-dark.jpg | The same in dark mode, at one moment of the ride
+features:
+  - **Two looks:** BigWatts or Karoo (the Karoo's number font). Both have the Karoo's header: power icon and field name, e.g. 3S POWER.
+  - **Number:** neutral, in the zone colour, or a zone gauge (an arc around the number or a bar
+      under it, all seven zones with your current one raised). The whole field can take the zone colour.
+  - **Zone time** (optional): the gauge's zones grow with the time you spend in each during the ride.
+  - **Under the watts**, smaller: your zone (`Z4`, `Zone 4` or `Zone 4 · Lactate Threshold`), heart
+      rate, or average watts for the ride.
+  - **Power:** instant, 3 s, 5 s or 10 s average.
+  - Everything is set on the app's **Settings** page (open **DDB BigWatts** from the Karoo's app list).
+      The field has no tap action, so a long-press still changes the field as usual.
+more: |
+  There's a [guide with pictures](docs/guide/README.md). Building it yourself or making a release: see [docs/DEVELOPING.md](docs/DEVELOPING.md). Problems or ideas: [Issues](https://github.com/Dubadai/karoo-bigwatts/issues). The big-watts styles come from [BetterIntervals](https://github.com/Dubadai/karoo-betterintervals).
+install:
+  - On your phone, open the latest release and share the `.apk` link to the **Hammerhead
+      Companion** app (or with a computer: `adb install bigwatts.apk`).
+  - In a ride profile, add **DDB BigWatts → BigWatts** to a page, at any size.
+  - Open **DDB BigWatts** from the app list to pick the style, the line above the watts and the power.
+install_note: |
+  Values show `--` when the power meter (or heart rate strap) isn't connected. Colours need power
+  zones in your Karoo rider profile.
+reddit:
+  title: |
+    BigWatts: big power numbers in your Karoo zone colours
+  body: |
+    I wanted my power readable at a glance without squinting, so I made BigWatts. It puts your watts big in the middle of the field and colours them with the power zones from your Karoo rider profile.
+
+    - Plain number, number in the zone colour, or a zone gauge (arc or bar)
+    - Under the watts: your zone, heart rate, or ride average
+    - Instant, 3 s, 5 s or 10 s power
+    - Its own look, or one that matches the Karoo's native fields
+    - Works at any field size
+
+    Everything is set on a settings page with a live preview, so the field itself has no tap action and long-press still works as normal.
+versions:
+

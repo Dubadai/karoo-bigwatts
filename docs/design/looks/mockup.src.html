@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BigWatts looks</title>
+<style>
+  @font-face { font-family: BWPlex; font-weight: 600; src: url(__PLEX_SEMIBOLD__); }
+  @font-face { font-family: BWPlex; font-weight: 500; src: url(__PLEX_MEDIUM__); }
+  @font-face { font-family: BWCond; font-weight: 500; src: url(__PLEX_COND__); }
+  :root { color-scheme: dark; }
+  html, body { margin:0; }
+  body { background:#2A2A2A; color:#C9C6C0; font:14px/1.45 -apple-system, "Helvetica Neue", Arial, sans-serif;
+         padding:28px 16px 64px; box-sizing:border-box; }
+  h1 { font-size:22px; color:#F2F0EA; margin:0 0 18px; text-align:center; }
+  h2 { font-size:17px; color:#F2F0EA; margin:0; }
+  section { max-width:1300px; margin:0 auto 52px; display:grid; gap:14px; justify-items:center; }
+  .row { display:flex; flex-wrap:wrap; justify-content:center; align-items:flex-start; gap:22px; }
+  figure { margin:0; display:grid; justify-items:center; gap:8px; }
+  figcaption { font-size:13px; color:#E8E6E1; text-align:center; max-width:260px; }
+  canvas.dev { cursor:pointer; }
+  .controls { position:sticky; top:0; z-index:2; background:#2A2A2A; padding:10px 0; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+  button { font:inherit; background:#3A3A38; color:#F2F0EA; border:1px solid #555; border-radius:16px; padding:5px 14px; cursor:pointer; }
+  button.on { background:#E8E6E1; color:#111; }
+  .tiles { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; align-items:flex-end; }
+  .grid { display:grid; grid-template-columns:repeat(3, auto); gap:14px 18px; }
+  .look { font-size:13px; color:#E8E6E1; align-self:center; }
+</style>
+</head>
+<body>
+<h1>BigWatts: looks, round 3</h1>
+<div class="controls" id="controls"></div>
+
+<section>
+  <h2>Settings (tap the options)</h2>
+  <div class="row" id="settings"></div>
+</section>
+
+<section>
+  <h2>On a ride page</h2>
+  <div class="row" id="ride"></div>
+</section>
+
+<section>
+  <h2>Sizes</h2>
+  <div class="tiles" id="sizes"></div>
+</section>
+
+<section>
+  <h2>Every number × background, both looks</h2>
+  <div id="combos"></div>
+</section>
+
+<script>/*__KAROO_DEVICE_JS__*/</script>
+<script>
+const FRAME = "__FRAME__";
+const REFS = "__REFS__";
+const PLEX = 'BWPlex', COND = 'BWCond';
+const CAP = 0.698;   // cap height / font size, IBM Plex (digits are cap height)
+
+/* Karoo power zones (7, % of FTP). Demo FTP 280 W. */
+const FTP = 280;
+const ZONE_TOP = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, Infinity];
+// The Karoo's own zone names (ride app, commonmodule_auto_zone_1…7)
+const ZONE_NAME = ['Active Recovery', 'Endurance', 'Tempo', 'Lactate Threshold', 'VO2 Max', 'Anaerobic Capacity', 'Neuromuscular'];
+const ZC = {
+  arc:   ['#8F8D86','#2F7FD8','#3FA34D','#E8B400','#F07A1A','#E0383E','#8B4FD8'],   // gauge, light
+  arcD:  ['#A6A49C','#4C9BF0','#5CC46A','#FFD02E','#FF9440','#FF5A5F','#A97AF2'],   // gauge, dark
+  textL: ['#5F5E5A','#0C447C','#27500A','#6B4B00','#8A3B00','#791F1F','#4B2A85'],
+  textD: ['#C9C7BF','#85B7EB','#97C459','#F2CF5B','#F5A86A','#F09595','#C3A6F2'],
+  bgL:   ['#DDDCD6','#9FC7EF','#B4CE95','#F3DE8A','#F6C49B','#F1A9A8','#CDB9F0'],
+  bgD:   ['#2C2C2A','#153454','#263A0D','#3E3206','#4A2608','#561C1C','#2E1C52'],
+};
+const zoneOf = w => ZONE_TOP.findIndex(t => w < t * FTP);
+const PAL = {
+  light: { bg:'#FFFFFF', text:'#000000', sub:'#5F5E5A', dot:'#888780', heart:'#C62F3A', bolt:'#8A6000', green:'#129A5E' },
+  dark:  { bg:'#000000', text:'#FFFFFF', sub:'#B4B2A9', dot:'#888780', heart:'#FF5C66', bolt:'#FAC775', green:'#1DB872' },
+};
+const LABEL = { inst:'POWER', s3:'3S POWER', s5:'5S POWER', s10:'10S POWER' };
+const SMOOTH_SHIFT = { inst: 14, s3: 0, s5: -4, s10: -7 };
+
+/* Readability: never let a coloured number drop below 4.5:1 against what's behind it. */
+const lum = hex => { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+  .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+const readable = (fg, bg, fallback) => contrast(fg, bg) >= 4.5 ? fg : fallback;
+
+function heart(ctx, x, y, s, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s / 24, s / 24); ctx.fillStyle = color;
+  ctx.fill(new Path2D('M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.2 0 3.6 1.2 5.3 3 1.7-1.8 3.1-3 5.3-3 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z'));
+  ctx.restore();
+}
+function bolt(ctx, x, y, s, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s / 24, s / 24); ctx.fillStyle = color;
+  ctx.fill(new Path2D('M14 1 4 14h7l-2 9 10-13h-7z')); ctx.restore();
+}
+const setFont = (ctx, fam, wt, px) => ctx.font = `${wt} ${px}px ${fam}`;
+function fit(ctx, text, fam, wt, maxW, maxPx) {
+  let px = Math.floor(maxPx); setFont(ctx, fam, wt, px);
+  while (px > 10 && ctx.measureText(text).width > maxW) setFont(ctx, fam, wt, --px);
+  return px;
+}
+
+/** The line under the watts (zone / heart rate / ride average). Hidden at one row. */
+function topLine(ctx, cx, y, px, st, watts, p, karoo) {
+  const z = zoneOf(watts);
+  if (st.top === 'zone') { zonePill(ctx, cx, y, px, z, st, p, karoo); return; }
+  const fbg = st.bg === 'zone' && st.num !== 'gauge' ? (st.mode === 'dark' ? ZC.bgD[z] : ZC.bgL[z]) : p.bg;
+  let icon = null, text, color = readable(p.sub, fbg, p.text);   // secondary data, still >= 4.5:1
+  if (st.top === 'hr') { icon = heart; text = '143'; }
+  else { icon = bolt; text = karoo ? 'AVG 241 W' : 'Avg 241 W'; }
+  const fam = karoo ? COND : PLEX, wt = karoo ? 500 : (st.top === 'zone' ? 500 : 600);
+  setFont(ctx, fam, wt, px);
+  while (px > 14 && ctx.measureText(text).width + (icon ? px * 1.35 : 0) > cx * 2 * 0.92) setFont(ctx, fam, wt, --px);
+  const iw = icon ? px * 1.05 : 0, gap = icon ? px * 0.3 : 0, tw = ctx.measureText(text).width;
+  const x = cx - (iw + gap + tw) / 2;
+  if (icon) icon(ctx, x, y - px * 0.9, iw, icon === heart ? p.heart : p.bolt);
+  ctx.textAlign = 'left'; ctx.fillStyle = color; ctx.fillText(text, x + iw + gap, y);
+}
+
+/** The zone as plain text: "Z4", and with Long on, a small grey dot and the Karoo zone name. */
+function zonePill(ctx, cx, y, px, z, st, p, karoo) {
+  const short = st.zname === 'short';
+  const label = short ? `Z${z + 1}` : (karoo ? `ZONE ${z + 1}` : `Zone ${z + 1}`);
+  const name = st.zname === 'long' ? (karoo ? ZONE_NAME[z].toUpperCase() : ZONE_NAME[z]) : '';
+  const ink = readable(p.sub, st.bg === 'zone' && st.num !== 'gauge' ? (st.mode === 'dark' ? ZC.bgD[z] : ZC.bgL[z]) : p.bg, p.text);
+  const fam = karoo ? COND : PLEX;
+  let lw, nw, dotGap, total;
+  const measure = () => {
+    setFont(ctx, fam, karoo ? 500 : 600, px); lw = ctx.measureText(label).width;
+    setFont(ctx, fam, 500, px); nw = name ? ctx.measureText(name).width : 0;
+    dotGap = name ? px * 0.9 : 0; total = lw + dotGap + nw;
+  };
+  measure();
+  while (px > 14 && total > cx * 2 * 0.86) { px--; measure(); }
+  let x = cx - total / 2;
+  ctx.textAlign = 'left'; ctx.fillStyle = ink;
+  setFont(ctx, fam, karoo ? 500 : 600, px); ctx.fillText(label, x, y); x += lw;
+  if (name) {
+    ctx.fillStyle = p.dot; ctx.beginPath(); ctx.arc(x + dotGap / 2, y - px * CAP / 2, Math.max(2.5, px * 0.1), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = ink; setFont(ctx, fam, 500, px); ctx.fillText(name, x + dotGap, y);
+  }
+}
+
+/* Gauge: our BetterIntervals arc, with the zones shown the Coros way. The arc is split into the
+   seven Karoo zones (equal lengths, so every zone is easy to see), each in its zone colour. The
+   current zone is drawn thick and bright, the others thin and quieter; the needle sits at the
+   watts inside the current zone. */
+function zonePos(watts) {
+  const z = zoneOf(watts);
+  const lo = z ? ZONE_TOP[z - 1] * FTP : 0;
+  const hi = ZONE_TOP[z] === Infinity ? lo + 0.3 * FTP : ZONE_TOP[z] * FTP;
+  return { z, t: Math.min(Math.max((watts - lo) / (hi - lo), 0.04), 0.96) };
+}
+const zoneColor = (i, dark) => (dark ? ZC.arcD : ZC.arc)[i];
+function needle(ctx, x0, y0, x1, y1, wdt, p, bg) {
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = bg; ctx.lineWidth = wdt + 6;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.strokeStyle = p.text; ctx.lineWidth = wdt;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+}
+const ARC_END = 0.358;      // ends 20.5° above horizontal, as in BetterIntervals
+const SW = 0.16;            // active band thickness, × r
+const NEEDLE_OUT = 0.15;    // needle reaches this far past r, × r (layout reserves it)
+function arcGauge(ctx, cx, cy, r, watts, p, dark, bg, zoneBg) {
+  const a0 = Math.PI + ARC_END, a1 = 2 * Math.PI - ARC_END, n = ZONE_TOP.length;
+  const seg = (a1 - a0) / n, gap = 0.02, sw = r * SW;
+  const { z, t } = zonePos(watts);
+  ctx.lineCap = 'round';               // soft, rounded segments
+  for (let i = 0; i < n; i++) {
+    const on = i === z, lw = on ? sw : sw * 0.72, capA = lw / 2 / r;
+    ctx.strokeStyle = zoneColor(i, dark);
+    ctx.globalAlpha = on ? 1 : (dark ? 0.6 : 0.7);
+    ctx.lineWidth = lw;
+    const s0 = a0 + i * seg + gap / 2 + capA, s1 = a0 + (i + 1) * seg - gap / 2 - capA;
+    ctx.beginPath(); ctx.arc(cx, cy, r, s0, Math.max(s0 + 0.001, s1)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const a = a0 + (z + t) * seg;
+  needle(ctx, cx + Math.cos(a) * (r - r * NEEDLE_OUT), cy + Math.sin(a) * (r - r * NEEDLE_OUT),
+         cx + Math.cos(a) * (r + r * NEEDLE_OUT * 0.85), cy + Math.sin(a) * (r + r * NEEDLE_OUT * 0.85),
+         Math.max(5, r * 0.05), p, bg);
+}
+/** One-row gauge: the same zones laid flat under the number. */
+function barGauge(ctx, x0, x1, y, hgt, watts, p, dark, bg, zoneBg) {
+  const n = ZONE_TOP.length, seg = (x1 - x0) / n, { z, t } = zonePos(watts);
+  for (let i = 0; i < n; i++) {
+    const on = i === z, hh = on ? hgt : hgt * 0.6;
+    ctx.fillStyle = zoneColor(i, dark);
+    ctx.globalAlpha = on ? 1 : (dark ? 0.6 : 0.7);
+    ctx.beginPath(); ctx.roundRect(x0 + i * seg + 3, y - hh / 2, seg - 6, hh, hh / 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const mx = x0 + (z + t) * seg;
+  needle(ctx, mx, y - hgt * 0.8, mx, y + hgt * 0.8, Math.max(5, hgt * 0.25), p, bg);
+}
+
+/** The field in a w×h box. A ride-page row is 144 px tall; full page is 478×721.
+    The second line (zone / HR / average) sits UNDER the watts, clear of the Karoo field name. */
+function drawField(ctx, w, h, st, watts) {
+  const p = PAL[st.mode], dark = st.mode === 'dark', z = zoneOf(watts), karoo = st.look === 'karoo';
+  const zoneBg = st.bg === 'zone' && st.num !== 'gauge';   // the gauge already shows the zone
+  const bg = zoneBg ? (dark ? ZC.bgD[z] : ZC.bgL[z]) : p.bg;
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  const oneRow = h < 200;
+  const fam = karoo ? COND : PLEX, wt = karoo ? 500 : 600;
+  const padY = oneRow ? 16 : Math.max(18, h * 0.08), padX = oneRow ? 14 : Math.max(18, w * 0.08);
+  let top = padY, bottom = h - padY, header = null;
+  if (karoo) {                        // Karoo header: icon top left, field name top right
+    bolt(ctx, 12, 10, 28, contrast(p.green, bg) >= 3 ? p.green : p.text);   // icons need 3:1
+    ctx.fillStyle = p.text; setFont(ctx, COND, 500, 31.875); ctx.textAlign = 'right';
+    ctx.fillText(LABEL[st.smooth], w - 10, 36);
+    const lw = ctx.measureText(LABEL[st.smooth]).width;
+    header = [[0, 0, 50, 46], [w - 18 - lw, 0, w, 46]];   // icon box, name box
+    top = oneRow ? 42 : 50 + padY * 0.5;
+    if (oneRow) bottom = h - 10;   // Karoo header already takes the top: use the rest
+  }
+  const s = String(watts);
+  let color = p.text;
+  if (st.num === 'zone') color = readable(dark ? ZC.textD[z] : ZC.textL[z], bg, p.text);
+  // Second line under the watts (left out at one row)
+  const tpx = oneRow ? 0 : Math.round(Math.max(22, Math.min(h * 0.105, w * 0.085, karoo ? 31.875 : 34)));
+  const lineCap = tpx * 0.72, avail = bottom - top;
+  if (st.num === 'gauge' && oneRow) bottom -= 18 + 16;   // bar + gap (clear of the needle)
+
+  if (st.num === 'gauge' && !oneRow && st.shape !== 'bar') {
+    const gap = Math.max(14, tpx * 0.8);          // same gap as under a plain number
+    const OUT = 3;                                 // needle outline, px
+    const above = 1 + NEEDLE_OUT * 0.85;           // needle tip above the arc centre line, in r
+    // Karoo look: the arc may rise between the icon and the field name, as long as it keeps
+    // 8 px clear of both. Start as big as the whole field allows and shrink until it fits.
+    const gTop = header ? padY : top, gAvail = bottom - gTop;
+    const wMax = (w - 2 * padX) / (2 * Math.cos(ARC_END) + SW);
+    const place = r => gTop + (gAvail - (r * above + OUT + gap + lineCap)) / 2 + OUT + r * above;
+    const hits = (r, cy) => {
+      if (!header) return false;
+      const a0 = Math.PI + ARC_END, a1 = 2 * Math.PI - ARC_END, R = r * above + OUT;
+      for (let k = 0; k <= 60; k++) {
+        const a = a0 + (a1 - a0) * k / 60, x = w / 2 + Math.cos(a) * R, y = cy + Math.sin(a) * R;
+        if (header.some(([x0, y0, x1, y1]) => x > x0 - 8 && x < x1 + 8 && y > y0 - 8 && y < y1 + 8)) return true;
+      }
+      return false;
+    };
+    let r = Math.min((gAvail - gap - lineCap - OUT) / above, wMax), cy = place(r);
+    while (r > 30 && (hits(r, cy) || cy - r * above - OUT < (header ? 0 : top))) { r -= 2; cy = place(r); }
+    arcGauge(ctx, w / 2, cy, r, watts, p, dark, bg, zoneBg);
+    ctx.fillStyle = p.text; ctx.textAlign = 'center';
+    const px = fit(ctx, s, fam, wt, r * 1.22, r * 0.7 / CAP);   // as big as fits inside the arc
+    ctx.fillText(s, w / 2, cy);
+    topLine(ctx, w / 2, cy + gap + lineCap, tpx, st, watts, p, karoo);
+    return;
+  }
+  const free = (bottom - top);
+  const gap = tpx ? Math.max(14, tpx * 0.8) : 0;
+  // Bar gauge from two rows up: number, then the zone bar, then the zone line, as one group
+  const bar = st.num === 'gauge' && !oneRow;
+  const barH = bar ? Math.round(Math.max(18, Math.min(h * 0.06, 30))) : 0;
+  const barGap = bar ? Math.max(14, tpx * 0.8) + barH * 0.3 : 0;   // + room for the needle
+  const barBlock = bar ? barGap + barH + barH * 0.3 : 0;
+  const capMax = free - gap - lineCap - barBlock;
+  ctx.textAlign = 'center'; ctx.fillStyle = color;
+  const px = fit(ctx, s, fam, wt, w - 2 * padX, capMax / CAP);
+  const capH = px * CAP, groupH = capH + barBlock + gap + lineCap;
+  const base = top + (free - groupH) / 2 + capH;
+  ctx.fillText(s, w / 2, base);
+  let lineY = base + gap + lineCap;
+  if (bar) {
+    const by = base + barGap + barH / 2;
+    barGauge(ctx, padX, w - padX, by, barH, watts, p, dark, bg, zoneBg);
+    lineY = by + barH / 2 + barH * 0.3 + gap + lineCap;
+  }
+  if (tpx) topLine(ctx, w / 2, lineY, tpx, st, watts, p, karoo);
+  if (st.num === 'gauge' && oneRow) barGauge(ctx, padX + 8, w - padX - 8, (karoo ? h - 10 : h - padY) - 9, 18, watts, p, dark, bg, zoneBg);
+}
+/** On the ride page from a real screenshot: rows are 144 px from y 62. */
+function drawRide(ctx, st, watts, rows) {
+  const p = PAL[st.mode], h = rows * 144;
+  ctx.fillStyle = p.bg; ctx.fillRect(0, 60, 480, h + 2);
+  ctx.save(); ctx.translate(0, 62); ctx.beginPath(); ctx.rect(0, 0, 480, h); ctx.clip();
+  drawField(ctx, 480, h, st, watts); ctx.restore();
+}
+
+/* ---------- Settings page, in the Karoo's own style (as ClearWind's Settings) ---------- */
+const SPAL = {
+  light: { bg:'#FFFFFF', title:'#1C2E2E', track:'#F4F4F4', sel:'#9FB3BD', seg:'#243535', help:'#5F5F5F', div:'#DDDDDD' },
+  dark:  { bg:'#000000', title:'#F2F2F2', track:'#2A2A2A', sel:'#5E7783', seg:'#F2F2F2', help:'#B4B2A9', div:'#3A3A38' },
+};
+function wrap(ctx, text, maxW) {
+  const words = text.split(' '), lines = []; let line = '';
+  for (const w of words) { const t = line ? line + ' ' + w : w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; }
+  lines.push(line); return lines;
+}
+/** Draws the whole (scrolling) page; returns tap areas in page coordinates. */
+function drawSettings(ctx, base, mode, sections, footer) {
+  const p = SPAL[mode], hits = [];
+  ctx.fillStyle = p.bg; ctx.fillRect(0, 0, 480, 2000);
+  ctx.drawImage(base, 0, 0, 480, 140, 0, 0, 480, 140);   // real status bar and back arrow
+  ctx.fillStyle = p.title; setFont(ctx, PLEX, 600, 37); ctx.textAlign = 'left';
+  ctx.fillText('BigWatts', 23, 196);
+  let y = 262;
+  sections.forEach((s, i) => {
+    if (i > 0) { ctx.fillStyle = p.div; ctx.fillRect(22, y - 46, 436, 1.5); }
+    ctx.save(); if (s.disabled) ctx.globalAlpha = 0.38;
+    ctx.fillStyle = p.title; setFont(ctx, PLEX, 500, 29); ctx.textAlign = 'left';
+    ctx.fillText(s.title, 23, y);
+    const tx = 22, ty = y + 18, tw = 436, th = 68, n = s.options.length, sw = (tw - 6) / n;
+    ctx.fillStyle = p.track; ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, th / 2); ctx.fill();
+    s.options.forEach(([label, value], k) => {
+      const r = [tx + 3 + k * sw, ty + 3, sw, th - 6];
+      if (value === s.value) { ctx.fillStyle = p.sel; ctx.beginPath(); ctx.roundRect(...r, (th - 6) / 2); ctx.fill(); }
+      ctx.fillStyle = p.seg; setFont(ctx, PLEX, 500, n > 3 ? 22 : 23); ctx.textAlign = 'center';
+      ctx.fillText(label, r[0] + sw / 2, ty + 42);
+      if (!s.disabled) hits.push({ rect: r, section: s.key, value });
+    });
+    ctx.restore();
+    ctx.fillStyle = p.help; setFont(ctx, PLEX, 500, 21); ctx.textAlign = 'left';
+    const lines = wrap(ctx, s.help, 436);
+    lines.forEach((l, k) => ctx.fillText(l, 23, ty + th + 34 + k * 28));
+    y = ty + th + 34 + (lines.length - 1) * 28 + 74;
+  });
+  ctx.fillStyle = p.div; ctx.fillRect(22, y - 46, 436, 1.5);
+  ctx.fillStyle = p.title; setFont(ctx, PLEX, 500, 23); ctx.textAlign = 'left';
+  wrap(ctx, footer, 436).forEach((l, k) => ctx.fillText(l, 23, y - 6 + k * 31));
+  return { hits, height: y + 60 };
+}
+
+const loadImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; });
+
+(async () => {
+  await Promise.all([`600 100px ${PLEX}`, `500 20px ${PLEX}`, `500 40px ${COND}`].map(f => document.fonts.load(f)));
+  const st = { look: 'bw', num: 'zone', bg: 'none', top: 'zone', zname: 'short', shape: 'arc', smooth: 's3', base: 280, mode: 'light' };
+  const sBase = { light: await loadImg(REFS['interval-settings-light']), dark: await loadImg(REFS['interval-settings-dark']) };
+  const dev = { light: await KarooDevice.load({ frame: FRAME, screen: REFS['ride-light'] }),
+                dark: await KarooDevice.load({ frame: FRAME, screen: REFS['ride-dark'] }) };
+  const devS = { light: await KarooDevice.load({ frame: FRAME, screen: REFS['interval-settings-light'] }),
+                 dark: await KarooDevice.load({ frame: FRAME, screen: REFS['interval-settings-dark'] }) };
+
+  const controls = document.getElementById('controls'), buttons = [];
+  const btn = (label, on, fn) => { const b = document.createElement('button'); b.textContent = label;
+    b.onclick = () => { fn(); render(); }; b._on = on; controls.append(b); buttons.push(b); };
+  for (const w of [130, 190, 235, 280, 315, 380, 520]) btn(`${w} W · Z${zoneOf(w) + 1}`, () => st.base === w, () => st.base = w);
+  for (const m of ['light', 'dark']) btn(m === 'light' ? 'Light' : 'Dark', () => st.mode === m, () => st.mode = m);
+
+  const SECTIONS = () => [
+    { key: 'look', title: 'Look', value: st.look, help: 'Karoo: icon and field name on top, in the Karoo font.',
+      options: [['BigWatts', 'bw'], ['Karoo', 'karoo']] },
+    { key: 'num', title: 'Number', value: st.num, help: 'Colours follow your Karoo power zones.',
+      options: [['Neutral', 'neutral'], ['Zone colour', 'zone'], ['Gauge', 'gauge']] },
+    ...(st.num === 'gauge' ? [{ key: 'shape', title: 'Gauge', value: st.shape, help: 'One row always uses the bar.',
+      options: [['Arc', 'arc'], ['Bar', 'bar']] }] : []),
+    st.num === 'gauge'
+      ? { key: 'bg', title: 'Background', value: 'none', disabled: true, help: 'Not with the gauge: it already shows your zone.',
+          options: [['None', 'none'], ['Zone', 'zone']] }
+      : { key: 'bg', title: 'Background', value: st.bg, help: 'Zone fills the whole field with the zone colour.',
+          options: [['None', 'none'], ['Zone', 'zone']] },
+    { key: 'top', title: 'Under the watts', value: st.top, help: 'Left out when the field is one row tall.',
+      options: [['Zone', 'zone'], ['Heart rate', 'hr'], ['Avg watts', 'avg']] },
+    ...(st.top === 'zone' ? [{ key: 'zname', title: 'Zone name', value: st.zname, help: 'Short: Z4. Compact: Zone 4. Long: Zone 4 · Tempo.',
+      options: [['Short', 'short'], ['Compact', 'compact'], ['Long', 'long']] }] : []),
+    { key: 'smooth', title: 'Power', value: st.smooth, help: 'Instant reacts fastest; 10 s is calmest.',
+      options: [['Instant', 'inst'], ['3 s', 's3'], ['5 s', 's5'], ['10 s', 's10']] },
+  ].filter(Boolean);
+  const FOOTER = 'Best two rows tall or more. You set the size when you add BigWatts to a ride page.';
+
+  const W = 290;   // device width in the page
+  function settingsDevice(scroll) {
+    const base = sBase[st.mode], d = devS[st.mode];
+    const page = document.createElement('canvas'); page.width = 960; page.height = 4000;
+    const pc = page.getContext('2d'); pc.scale(2, 2);
+    const { hits, height } = drawSettings(pc, base, st.mode, SECTIONS(), FOOTER);
+    const off = scroll ? Math.max(0, height - 800) : 0;
+    const scr = d.screen({ scale: 2, draw: ctx => {
+      ctx.drawImage(page, 0, off * 2, 960, 1600, 0, 0, 480, 800);
+      if (off) ctx.drawImage(base, 0, 0, 480, 60, 0, 0, 480, 60);   // status bar stays put
+    } });
+    const c = d.device(scr, W); c.className = 'dev';
+    c.addEventListener('click', e => {
+      const k = W / 1100, r = c.getBoundingClientRect();
+      const sx = ((e.clientX - r.left) / k - 177) * 480 / 745, sy = ((e.clientY - r.top) / k - 215) * 800 / 1232 + off;
+      const h = hits.find(({ rect: [x, y, w, hh] }) => sx >= x && sx <= x + w && sy >= y && sy <= y + hh);
+      if (h) { st[h.section] = h.value; render(); }
+    });
+    return c;
+  }
+  const fig = (el, cap) => { const f = document.createElement('figure'); f.append(el);
+    if (cap) { const c = document.createElement('figcaption'); c.textContent = cap; f.append(c); } return f; };
+  function tile(w, h, s, watts, k) {
+    const t = document.createElement('canvas'), dpr = window.devicePixelRatio || 1;
+    t.width = w * dpr * k; t.height = h * dpr * k; t.style.width = `${w * k}px`; t.style.height = `${h * k}px`;
+    t.style.borderRadius = '4px';
+    const tc = t.getContext('2d'); tc.scale(dpr * k, dpr * k); drawField(tc, w, h, s, watts); return t;
+  }
+
+  function render() {
+    buttons.forEach(b => b.className = b._on() ? 'on' : '');
+    const watts = st.base + SMOOTH_SHIFT[st.smooth];
+    document.getElementById('settings').replaceChildren(
+      fig(settingsDevice(false)), fig(settingsDevice(true), 'Scrolled down'));
+
+    const ride = document.getElementById('ride'); ride.replaceChildren();
+    for (const [mode, rows, cap] of [['light', 2, 'Two rows'], ['dark', 2, 'Two rows, dark'], [st.mode, 1, 'One row: no second line']]) {
+      const d = dev[mode], s = { ...st, mode };
+      ride.append(fig(d.device(d.screen({ scale: 2, draw: ctx => drawRide(ctx, s, watts, rows) }), W), cap));
+    }
+
+    const sizes = document.getElementById('sizes'); sizes.replaceChildren();
+    for (const [w, h, cap] of [[480, 144, 'One row'], [238, 288, 'Half width, two rows'], [480, 288, 'Two rows'], [478, 721, 'Full page']])
+      sizes.append(fig(tile(w, h, st, watts, 0.5), cap));
+
+    const combos = document.getElementById('combos'); combos.replaceChildren();
+    for (const look of ['bw', 'karoo']) {
+      const g = document.createElement('div'); g.className = 'grid'; g.style.marginBottom = '22px';
+      for (const bg of ['none', 'zone']) for (const num of ['neutral', 'zone', 'arc', 'bar']) {
+        if ((num === 'arc' || num === 'bar') && bg === 'zone') continue;
+        const s2 = { ...st, look, bg, num: num === 'arc' || num === 'bar' ? 'gauge' : num, shape: num === 'bar' ? 'bar' : 'arc' };
+        g.append(fig(tile(480, 288, s2, watts, 0.5),
+          `${look === 'bw' ? 'BigWatts' : 'Karoo'} · ${({ neutral: 'Neutral', zone: 'Zone colour', arc: 'Gauge arc', bar: 'Gauge bar' })[num]} · ${bg === 'zone' ? 'Zone background' : 'No background'}`));
+      }
+      combos.append(g);
+    }
+  }
+  render();
+})();
+</script>
+</body>
+</html>

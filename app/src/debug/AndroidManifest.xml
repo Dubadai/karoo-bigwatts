@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: a preview of the field (adb can't add a field to a ride page). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".PreviewActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme" />
+        <!-- Field gallery: the field at every Karoo size, light and dark (design-assets/tools/field-gallery) -->
+        <activity
+            android:name=".FieldGalleryActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>
