@@ -22,8 +22,8 @@ android {
         applicationId = "com.daviddokakis.bigwatts"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "0.1.17"
+        versionCode = 19
+        versionName = "0.1.18"
         // Where the Karoo and UpdateCheck find the latest version. To test the update notice,
         // build with -PmanifestUrl=http://localhost:8791/manifest.json (BetterIntervals' README,
         // "Update notices").
